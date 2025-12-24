@@ -44,13 +44,33 @@ Google Routes API는 "막차 시간"을 직접 제공하지 않습니다. 대신
 
 ## 설치 방법
 
-### 1. 의존성 설치
+### 옵션 A: Railway 클라우드 배포 (추천)
 
-```bash
-pip install fastmcp requests python-dotenv
+#### 1. Railway 프로젝트 생성
+1. [Railway](https://railway.app/)에 가입
+2. "New Project" → "Deploy from GitHub repo" 선택
+3. 이 저장소 연결
+
+#### 2. 환경 변수 설정
+Railway 대시보드에서 **Environment Variables** 추가:
+```
+GOOGLE_API_KEY=your_google_api_key_here
 ```
 
-### 2. 환경 변수 설정
+#### 3. 자동 배포 완료!
+- Railway가 자동으로 빌드 & 배포
+- 공개 URL 생성됨 (예: `https://lastguardian-production-xxxx.up.railway.app`)
+- 이 URL을 PlayMCP에 등록하면 끝!
+
+### 옵션 B: 로컬 실행 (Claude Desktop)
+
+#### 1. 의존성 설치
+
+```bash
+pip install -r requirements.txt
+```
+
+#### 2. 환경 변수 설정
 
 `.env` 파일 생성:
 
@@ -60,7 +80,7 @@ GOOGLE_API_KEY=your_google_api_key_here
 
 > Google Cloud Console에서 Routes API를 활성화하고 API 키를 발급받으세요.
 
-### 3. Claude Desktop 설정
+#### 3. Claude Desktop 설정
 
 `claude_desktop_config.json`에 추가:
 
