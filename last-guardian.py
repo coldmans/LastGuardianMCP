@@ -148,167 +148,114 @@ def has_subway(route_data: dict) -> bool:
     return False
 
 
-def is_valid_route(
-    origin: str,
-    destination: str,
+def analyze_route_data(
+    route_data: dict,
     departure_time: datetime,
     max_total_min: int = 210,
     max_wait_min: int = 80,
-    allow_night_bus: bool = True,
-    require_subway: bool = False,
-) -> bool:
+) -> tuple[bool, bool, int | None]:
     """
-    해당 시간에 유효한 경로가 있는지 확인.
-
-    막차 끊김 판단 기준:
-    1. 총 소요시간 > 210분 (3시간 30분)
-    2. 출발 대기시간 > 80분 (첫차 기다리는 중)
-    3. allow_night_bus=False면 심야버스 경로 제외
-    4. require_subway=True면 지하철이 포함되어야 함
+    경로 데이터 분석: (유효여부, 지하철포함여부, 소요시간) 반환.
+    API 호출 없이 이미 받은 데이터만 분석.
     """
-    result = get_transit_route(origin, destination, departure_time)
-    if not result or "routes" not in result or len(result["routes"]) == 0:
-        return False
+    if not route_data or "routes" not in route_data or len(route_data["routes"]) == 0:
+        return False, False, None
 
-    # 심야버스 제외 옵션
-    if not allow_night_bus and has_night_bus(result):
-        return False
-
-    # 지하철 필수 옵션
-    if require_subway and not has_subway(result):
-        return False
-
-    arrival = get_arrival_time(result)
-    first_dep = get_first_departure_time(result)
+    arrival = get_arrival_time(route_data)
+    first_dep = get_first_departure_time(route_data)
 
     if not arrival:
-        return False
+        return False, False, None
+
+    duration = int((arrival - departure_time).total_seconds() / 60)
 
     # 총 소요시간 체크
-    total_duration = (arrival - departure_time).total_seconds() / 60
-    if total_duration > max_total_min:
-        return False
+    if duration > max_total_min:
+        return False, False, None
 
     # 출발 대기시간 체크
     if first_dep:
         wait_time = (first_dep - departure_time).total_seconds() / 60
         if wait_time > max_wait_min:
-            return False
+            return False, False, None
 
-    return True
-
-
-def get_route_duration(origin: str, destination: str, departure_time: datetime) -> int | None:
-    """특정 시간 출발 경로의 소요시간(분) 반환"""
-    result = get_transit_route(origin, destination, departure_time)
-    if not result or "routes" not in result:
-        return None
-    arrival = get_arrival_time(result)
-    if not arrival:
-        return None
-    return int((arrival - departure_time).total_seconds() / 60)
+    has_sub = has_subway(route_data)
+    return True, has_sub, duration
 
 
-def find_last_train_time(
-    origin: str,
-    destination: str,
-    require_subway: bool = False,
-) -> tuple[datetime | None, int | None]:
-    """이분탐색으로 막차 시간 찾기 (약 5분 정확도). (시간, 소요시간) 반환"""
+def find_all_last_trains(origin: str, destination: str) -> tuple[dict, dict | None]:
+    """
+    한 번의 이분탐색으로 모든 막차 정보 찾기.
+    API 호출: 최대 7회 (현재 1회 + 이분탐색 6회)
+
+    Returns:
+        (막차정보 dict, 현재경로 데이터 or None)
+    """
     now = datetime.now(KST)
 
     # 탐색 범위: 20:30 ~ 02:00
     if now.hour >= 20:
-        start_8pm = now.replace(hour=20, minute=30, second=0, microsecond=0)
-        end_2am = (now + timedelta(days=1)).replace(hour=2, minute=0, second=0, microsecond=0)
-    elif now.hour < 2:
-        start_8pm = (now - timedelta(days=1)).replace(hour=20, minute=30, second=0, microsecond=0)
-        end_2am = now.replace(hour=2, minute=0, second=0, microsecond=0)
-    else:
-        start_8pm = now.replace(hour=20, minute=30, second=0, microsecond=0)
-        end_2am = (now + timedelta(days=1)).replace(hour=2, minute=0, second=0, microsecond=0)
-
-    left = start_8pm
-    right = end_2am
-
-    # 현재 시간에 경로가 없으면 이미 막차 끊김
-    if not is_valid_route(origin, destination, now, require_subway=require_subway):
-        return None, None
-
-    # 새벽 2시에도 유효한 경로가 있으면 그냥 반환
-    if is_valid_route(origin, destination, right, require_subway=require_subway):
-        duration = get_route_duration(origin, destination, right)
-        return right, duration
-
-    # 이분탐색 (6회 = 약 5분 정확도)
-    for _ in range(6):
-        mid = left + (right - left) / 2
-        if is_valid_route(origin, destination, mid, require_subway=require_subway):
-            left = mid
-        else:
-            right = mid
-
-    duration = get_route_duration(origin, destination, left)
-    return left, duration
-
-
-def find_recommended_time(origin: str, destination: str) -> tuple[datetime | None, int | None]:
-    """소요시간이 급증하기 전 추천 출발 시간 찾기"""
-    now = datetime.now(KST)
-
-    # 탐색 범위 설정
-    if now.hour >= 20:
-        start = now
+        start = now.replace(hour=20, minute=30, second=0, microsecond=0)
         end = (now + timedelta(days=1)).replace(hour=2, minute=0, second=0, microsecond=0)
     elif now.hour < 2:
-        start = now
+        start = (now - timedelta(days=1)).replace(hour=20, minute=30, second=0, microsecond=0)
         end = now.replace(hour=2, minute=0, second=0, microsecond=0)
     else:
         start = now.replace(hour=20, minute=30, second=0, microsecond=0)
         end = (now + timedelta(days=1)).replace(hour=2, minute=0, second=0, microsecond=0)
 
-    # 기준 소요시간 (현재 또는 20:30 출발)
-    base_duration = get_route_duration(origin, destination, start)
-    if not base_duration:
-        return None, None
+    # 결과 저장
+    last_subway = (None, None)  # (time, duration)
+    last_any = (None, None)
+    recommended = (None, None)
+    base_duration = None
 
-    # 30분 간격으로 체크하면서 소요시간 급증 시점 찾기
-    best_time = start
-    best_duration = base_duration
-    check_time = start
+    # 1. 현재 시간 체크 (API 호출 1회)
+    now_data = get_transit_route(origin, destination, now)
 
-    while check_time < end:
-        duration = get_route_duration(origin, destination, check_time)
-        if duration is None:
-            break
+    # 경로 자체가 없으면 (주소 오류 등)
+    if not now_data or "routes" not in now_data or len(now_data["routes"]) == 0:
+        return {"subway": (None, None), "any": (None, None), "recommended": (None, None)}, None
 
-        # 소요시간이 기준의 1.5배 이상이면 급증으로 판단
-        if duration > base_duration * 1.5:
-            break
+    is_valid, has_sub, duration = analyze_route_data(now_data, now)
 
-        best_time = check_time
-        best_duration = duration
-        check_time += timedelta(minutes=30)
+    if not is_valid:
+        # 경로는 있지만 막차 끊김 (소요시간 초과)
+        return {"subway": (None, None), "any": (None, None), "recommended": (None, None)}, now_data
 
-    return best_time, best_duration
+    # 현재 경로 정보 저장
+    base_duration = duration
+    last_any = (now, duration)
+    recommended = (now, duration)
+    if has_sub:
+        last_subway = (now, duration)
 
+    # 2. 이분탐색 (API 호출 6회)
+    left, right = start, end
 
-def find_all_last_trains(origin: str, destination: str) -> dict:
-    """세 가지 막차 정보 찾기"""
-    # 1. 지하철 포함 (지하철이 하나라도 있어야 함)
-    subway_time, subway_dur = find_last_train_time(origin, destination, require_subway=True)
+    for _ in range(6):
+        mid = left + (right - left) / 2
+        mid_data = get_transit_route(origin, destination, mid)
+        is_valid, has_sub, duration = analyze_route_data(mid_data, mid)
 
-    # 2. 아무거나 (심야버스 포함)
-    any_time, any_dur = find_last_train_time(origin, destination, require_subway=False)
+        if is_valid:
+            left = mid
+            last_any = (mid, duration)
 
-    # 3. 추천 출발 시간
-    rec_time, rec_dur = find_recommended_time(origin, destination)
+            if has_sub:
+                last_subway = (mid, duration)
+
+            # 추천 시간: 소요시간이 기준의 1.5배 미만이면 갱신
+            if base_duration and duration < base_duration * 1.5:
+                recommended = (mid, duration)
+        else:
+            right = mid
 
     return {
-        "subway": (subway_time, subway_dur),
-        "any": (any_time, any_dur),
-        "recommended": (rec_time, rec_dur),
-    }
+        "subway": last_subway,
+        "any": last_any,
+        "recommended": recommended,
+    }, now_data
 
 
 @mcp.tool()
@@ -320,38 +267,29 @@ def analyze_escape_plan(origin: str, destination: str) -> str:
     """
     now = datetime.now(KST)
 
-    # 1. 현재 경로 검색
-    data = get_transit_route(origin, destination, now)
+    # 막차 시간 찾기 (API 호출: 현재 1회 + 이분탐색 최대 6회)
+    last_trains, current_route = find_all_last_trains(origin, destination)
 
-    if not data or "routes" not in data or len(data["routes"]) == 0:
+    # 경로 자체가 없으면 (주소 오류)
+    if current_route is None:
         return f"""
 🛡️ [막차지킴이 LastGuardian]
 
 ❌ '{origin}' → '{destination}' 경로를 찾을 수 없습니다.
 
 가능한 원인:
-- 이미 막차가 끊겼습니다 🚫
 - 주소를 더 정확하게 입력해주세요 (예: "강남역", "서울역")
 - 대중교통으로 갈 수 없는 거리입니다
 """
-
-    # 2. 경로 정보 추출
-    route = data["routes"][0]
-    distance_m = route.get("distanceMeters", 0)
-
-    # 2-1. 노선 정보 추출
-    transit_steps = extract_route_summary(data)
-
-    # 3. 막차 시간 찾기
-    last_trains = find_all_last_trains(origin, destination)
 
     subway_time, subway_dur = last_trains["subway"]
     any_time, any_dur = last_trains["any"]
     rec_time, rec_dur = last_trains["recommended"]
 
-    # 막차 다 끊겼으면 추천 출발도 무의미
-    if any_time is None:
-        rec_time, rec_dur = None, None
+    # 현재 경로 정보 (API 추가 호출 없이 재사용)
+    route = current_route["routes"][0]
+    distance_m = route.get("distanceMeters", 0)
+    transit_steps = extract_route_summary(current_route)
 
     # 4. 남은 시간 계산
     def format_time_info(time, dur):
