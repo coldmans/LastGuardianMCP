@@ -352,8 +352,5 @@ def analyze_escape_plan(origin: str, destination: str) -> str:
 
 if __name__ == "__main__":
     # Railway 배포를 위한 HTTP 서버 모드
-    import uvicorn
-    import os
-
     port = int(os.getenv("PORT", 8000))
-    uvicorn.run(mcp.get_asgi_app(), host="0.0.0.0", port=port)
+    mcp.run(transport="http", host="0.0.0.0", port=port)
