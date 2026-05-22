@@ -4,6 +4,21 @@
 
 심야 시간대 대중교통 막차 정보를 실시간으로 분석하여, 지하철/버스 막차 시간과 추천 출발 시간을 알려줍니다.
 
+## Portfolio Highlights
+
+- Google Routes API가 직접 제공하지 않는 "막차 시간"을 MCP 도구로 추정하는 실용형 AI tool 프로젝트입니다.
+- FastMCP 서버로 구현해 Claude Desktop 같은 MCP 클라이언트에서 자연어로 호출할 수 있게 만들었습니다.
+- 이분 탐색으로 마지막 유효 대중교통 출발 시간을 추정하고, 너무 긴 대기/소요시간은 첫차 대기로 판정해 제외합니다.
+- Railway HTTP 배포와 로컬 Claude Desktop 설정을 모두 README에 문서화했습니다.
+
+## My Role
+
+- FastMCP server implementation
+- Google Routes API request/response parsing
+- subway/night-bus route viability heuristics
+- binary-search based last-departure estimation
+- Railway and local MCP setup documentation
+
 ## 주요 기능
 
 - **🚇 지하철 포함 막차**: 지하철이 포함된 경로의 마지막 출발 시간
